@@ -41,6 +41,7 @@ a{
     padding: 4px;
   }
   .posts .index ul li>span{
+    width: 90px;
     float:right;
   }
   .posts .index ul li:nth-child(odd){

@@ -3,6 +3,10 @@ var express = require('express');   // npm dependency 추가된 'express' 모듈
 var path = require('path');         // root 폴더의 path경로를 잡아줌
 var app = express();                // app이라는 변수에 express 라이브러리를 선언
 var mongoose = require('mongoose'); // Mongoose 모듈 사용
+var passport = require('passport'); // 계정관리를 할때 쓰이는 package
+var session = require('express-session');   // 로그인 여부판단 및 유저별 데이터 관리
+var flash = require('connect-flash');   // session에 자료를 flash로 저장하게 해주는 package(한번 읽어오면 지워짐)
+var async = require('async');   // 비동기식 호출
 var bodyParser = require('body-parser');
 var methodOverride = require('method-override'); // 대부분의 브라우져들이 보안을 문제로 post를 제외한 나머지 신호들을 차단한다는 것입니다. 이를 우회하기 위한 package.
 
@@ -27,6 +31,14 @@ var postSchema = mongoose.Schema({
 });
 var Post = mongoose.model('post', postSchema);
 
+var userSchema = mongoose.Schema({
+    email: {type:String, required:true, unique:true}, // unique 속성이 있는 경우 data 생성, 수정시에 동일한 값의 자료가 있으면 에러를 보냄
+    nickname: {type:String, required:true, unique:true},
+    password: {type:String, required:true},
+    createdAt: {type:Date, default:Date.now}
+});
+var User = mongoose.model('user', userSchema);
+
 // view setiing
 app.set("view engine", 'ejs');      // express에게 views 폴더를 default로 ejs파일을 찾아 열음
 
@@ -36,6 +48,76 @@ app.use(express.static(path.join(__dirname, 'public')));    // public이라는 �
 app.use(bodyParser.json()); // 모든 서버에 도착하는 신호들의 body를 JSON으로 분석
 app.use(bodyParser.urlencoded({extended:true})); // 웹 사이트가 JSON으로 데이터를 전송 할 경우 받는 body parser.
 app.use(methodOverride("_method"));
+app.use(flash());
+
+app.use(session({secret:'MySecret'}));  // 로그인 유지:secret은 session을 암호화 할떄 쓰이는 hash key값
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.serializeUser(function(user, done){    // session 생성 시에 어떠한 정보를 저장할지를 설정
+    done(null, user.id);    // user.id를 session에 저장  (이때 id는 db의 id임.)
+});
+passport.deserializeUser(function(id, done){    // session으로 부터 개체를 가져올 때 어떻게 가져올 지를 설정 
+    User.findById(id, function(err, user){  // id를 넘겨받아 DB에서 user를 찾고, user를 가져오게함
+        done(err, user);
+    });
+});
+
+var LocalStrategy = require('passport-local').Strategy; // Local Strategy를 package로 부터 가져옴
+passport.use('local-login', // strategy에 이름 지어주기
+    new LocalStrategy({ // local-login 설정하기
+        usernameField : 'email',    // default로 username과 password를 찾아 읽는다
+        passwordField : 'password',
+        passReqToCallback : true
+        },
+        function(req, email, password, done) {  //  실질적으로 어떻게 유저를 특정할지에 대한 함수 설정
+            User.findOne({  'email' :   email}, function(err, user){
+                if (err) return done(err);
+
+                if(!user){  // 유저를 찾고 없으면 flash 에러 메세지 발생
+                    req.flash("email", req.body.email);
+                    return done(null, false, req.flash('loginError', 'No user found.'));
+                }
+                if(user.paswword != password){  // 비밀번호 매치되는지 확인
+                    req.flash("email", req.body.email);
+                    return done(null, false, req.flash('loginError', 'Password does not match.'));
+                }
+                return done(null, user);    // 모두 통과하면 user 객체를 내보냄.
+            });
+        }
+    )
+);
+
+// set home routes
+app.get('/', function(res,req){ // 자등으로 게시판으로 이동
+    res.redirect('/posts');
+});
+
+app.get('/login', function(res,req){    // login form이 있는 view를 불러오는 route
+    res.render('login/login', {email:req.flash("email")[0], loginError:req.flash('loginError')})
+});
+
+app.post('/login',  // login form에서 받은 정보로 로그인을 실행하는 부분
+    function (req,res,next){
+        req.flash("email"); // 혹시라도 남아 있을지 모르는 flash 이메일을 지움
+        if(req.body.email.length === 0 || req.body.password.length ===0){   // form에 정보들이 있는지를 확인해서 없으면
+            req.flash("email", req.body.email);                             // 에러메세지와 함께 다시 login 페이지로 redirect함
+            req.flash("loginError","Please enter both email and password.");
+            res.redirect('/login');
+        }else{
+            next(); // 이상이 없으면 next()함수 실행
+        }
+    }, passport.authenticate('local-login', {
+        successRedirect : '/posts', // 이상이 없을경우
+        failureRedirect : '/login', // 이상이 있을경우
+        failureFlash    : true
+    })
+);
+
+app.get('/logout', function(req, res){  // 로그아웃
+    req.logout();
+    res.redirect('/');
+});
 
 // set routes
 /*
