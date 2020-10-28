@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <%- include ("../partials/head") %>
+    </head>
+    <body>
+        <header>
+            <%- include ("../partials/header") %>
+        </header>
+        <div class="posts"><!-- posts start -->
+            <%- include ("partials/top") %>
+            <!-- main start -->
+            
+            <!-- views/posts/new.ejs -->
+            <div class="new">
+                <h3>New Post</h3>
+                <!-- form이 submit되면 form안의 구성요소들 중 name이 있는 구성요소의
+                     name과 value가 action에 지정된 route으로 method에 설정된 신호를 보내게 됩니다. 
+                     우리한테 필요한것은 title과 body죠, textarea의 경우 tag안의 
+                     innerHTML 이 value로 인식됩니다. 
+                -->
+                <form class="posts_form" action="/posts" method="post">
+                    <label>Title</label>
+                    <input type="text" name="post[title]" value="">
+                    <label>Body</label>
+                    <textarea name="post[body]"></textarea>
+                    <button type="submit">Submit</button>
+                </form>
+                <a href="/posts"><button>Back</button></a>
+            </div>
+
+            <!-- main end -->
+        </div><!-- posts end -->
+        <footer>
+            <%- include ("../partials/footer") %>
+        </footer>
+    </body>
+</html>

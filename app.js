@@ -4,6 +4,9 @@ var path = require('path');         // root 폴더의 path경로를 잡아줌
 var app = express();                // app이라는 변수에 express 라이브러리를 선언
 var mongoose = require('mongoose'); // Mongoose 모듈 사용
 var bodyParser = require('body-parser');
+var methodOverride = require('method-override'); // 대부분의 브라우져들이 보안을 문제로 post를 제외한 나머지 신호들을 차단한다는 것입니다. 이를 우회하기 위한 package.
+
+
 
 // connect database
 mongoose.connect(process.env.MONGO_DB);  // Mongoose를 데이터베이스에 연결
@@ -31,6 +34,8 @@ app.set("view engine", 'ejs');      // express에게 views 폴더를 default로 
 // set middlewares
 app.use(express.static(path.join(__dirname, 'public')));    // public이라는 폴더명을 사용하겠다
 app.use(bodyParser.json()); // 모든 서버에 도착하는 신호들의 body를 JSON으로 분석
+app.use(bodyParser.urlencoded({extended:true})); // 웹 사이트가 JSON으로 데이터를 전송 할 경우 받는 body parser.
+app.use(methodOverride("_method"));
 
 // set routes
 /*
@@ -57,16 +62,22 @@ app.get('/posts', function (req,res) {  // Get신호로 /posts에 접속하는�
     });
 });
 
+// new
+app.get('/posts/new', function(req,res){
+    res.render("posts/new"); // 데이터가 서버로 전송이 되면 create 루트로 이동
+});
+
 /*
 POST신호로 /posts 에 접속하는 경우, 요청신호의 body의 post항목(req.body.post)로
 데이터를 생성(Post.create())하고 에러가 있으면 에러를 response하고(이때 success는 false), 
 에러가 없다면 새 게시글(post)를 response합니다.(이때 success는 true)
 */
 // create
-app.post('/posts', function (req,res) {  
+app.post('/posts', function (req,res) { 
+    console.log(req.body); 
     Post.create(req.body.post, function(err,post){
     if(err) return res.json({success:false, message:err});
-    res.json({success:true, data:post});
+    res.redirect('/posts'); // 데이터 생성후 게시판 처음으로 이동
     });
 });
 
@@ -80,7 +91,20 @@ GET신호로 /posts/:id 에 접속하는 경우, 아이디가 :id인 게시글(P
 app.get('/posts/:id', function (req,res) {
     Post.findById(req.params.id, function(err, post){
     if(err) return res.json({success:false, message:err});
-    res.json({success:true, data:post});
+    res.render("posts/show", {data:post});
+    });
+});
+
+/*
+edit은 단순히 view만 있는 것이 아니라 기존의 데이터를 가져와서 수정전의 자료를 보여줘야 합니다. 
+그래서 기본적으로 show페이지와 같습니다.
+다만 데이터들이 new의 form에 들어가 있는 형태이지요.
+*/
+// edit
+app.get('/posts/:id/edit', function (req,res) {
+    Post.findById(req.params.id, function(err, post){
+    if(err) return res.json({success:false, message:err});
+    res.render("posts/edit", {data:post});
     });
 });
 
@@ -95,7 +119,7 @@ app.put('/posts/:id', function (req,res) {
     req.body.post.updatedAt=Date.now();
     Post.findByIdAndUpdate(req.params.id, req.body.post, function(err, post){
         if(err) return res.json({success:false, message:err});
-        res.json({success:true, message:post._id+" updated"});
+        res.redirect('/posts/'+req.params.id);
     });
 });
 
@@ -108,7 +132,7 @@ DELETE신호로 /posts/:id 에 접속하는 경우, 아이디가 :id인 게시�
 app.delete('/posts/:id', function (req,res) {
     Post.findByIdAndRemove(req.params.id, function(err, post){
     if(err) return res.json({success:false, message:err});
-    res.json({success:true, message:post._id+" deleted"});
+    res.redirect('/posts');
     });
 });
 
