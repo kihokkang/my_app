@@ -39,10 +39,21 @@ GET신호로 /posts 에 접속하는 경우, 게시글(Post)데이터의 모든 
 에러가 없다면 모든 게시글(posts)를 response합니다.(이때 success는 true)
 */
 // index
-app.get('/posts', function (req,res) {  // Get신호로 /posts에 접속하는경우, 
-    Post.find({}, function(err, posts){
+app.get('/posts', function (req,res) {  // Get신호로 /posts에 접속하는경우,
+    /*
+    늦게 작성된 데이터가 위쪽으로 오기 하기 위해 sort를 하는 명령줄입니다. 
+    find에서 바로 callback 함수가 호출되지 않고,
+    find으로 찾고, sort로 자료를 정렬하고, 그 담에 exec로 함수를 수정하는 형태입니다.
+    -createdAt의 '-'는 역방향으로 정렬을 하기 때문에 사용되었습니다. 
+    그냥 'createdAt'으로 하면 처음 생성된 자료가 배열의 앞쪽으로 정렬됩니다.
+    */ 
+    Post.find({}).sort('-createdAt').exec(function (err,posts){
     if(err) return res.json({success:false, message:err});
-    res.json({success:true, data:posts});
+    /*
+    post/index파일을 html로 render합니다.
+    (확장자는 안적어도 됩니다. 이미 EJS를 우리의 view file로 설정을 했기 때문이죠)
+    */
+    res.render("posts/index", {data:posts}); 
     });
 });
 
