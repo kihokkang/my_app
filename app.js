@@ -119,6 +119,71 @@ app.get('/logout', function(req, res){  // 로그아웃
     res.redirect('/');
 });
 
+// set user routes
+// new
+app.get('/users/new', function(req,res){    // user 생성 view를 보여주는 route
+    res.render('users/new', {
+                                formData: req.flash('formData')[0], // invalid한 정보가 서버로 전달되면 다시 form으로 재전달
+                                emailError: req.flash('emailError')[0],
+                                nicknameError: req.flash('nicknameError')[0],
+                                passwordError: req.flash('passwordError')[0]
+                            }
+    );
+});
+
+// create
+app.post('/users', checkUserRegValidation, function(req,res,next){  // user 생성
+    User.create(req.body.user, function(err,user){
+        if(err) return res.json({success:false, message:err});
+        res.redirect('/login');
+    });
+});
+
+// show
+app.get('/users/:id', function(req,res){    // user의 profile을 보여주기 위한 route.
+    User.findById(req.params.id, function(err,user){
+        if(err) return res.json({success:false, message:err});
+        res.render("users/show", {user: user});
+    });
+});
+
+// edit
+app.get('/users/:id/edit', function(req,res){   
+    User.findById(req.params.id, function(err,user){
+        if(err) return res.json({success:false, message:err});
+        res.render('users/edit', {
+                                    user: user,
+                                    formData: req.flash('formData')[0], 
+                                    emailError: req.flash('emailError')[0],
+                                    nickname: req.flash('nicknameError')[0],
+                                    passwordError: req.flash('passwordError')[0]
+                                 }
+        );
+    });
+});
+
+// update
+app.put('/users/:id', checkUserRegValidation, function(req,res){    // checkUserRegValidation을 사용해서 업데이트 할 정보가 유효한지를 판단
+    User.findById(req.params.id, req.body.user, function(err,user){
+        if(err) return res.json({success:"false", message:err});
+        if(req.body.user.password == user.password){
+            if(req.body.user.newPassword){
+                req.body.user.password=req.body.user.newPassword;
+            }else{
+                delete req.body.user.password;
+            }
+            User.findByIdAndUpdate(req.params.id, req.body.user, function (err,user){
+                if(err) return res.json({success:"false", message:err});
+                res.redirect('/users/'+req.params.id);
+            });
+        }else{
+            req.flash("formData", req.body.user);
+            req.flash("passwordError", "- Invalid password");
+            res.redirect('/users/'+req.params.id+"/edit");
+        }
+    });
+});
+
 // set routes
 /*
 GET신호로 /posts 에 접속하는 경우, 게시글(Post)데이터의 모든 데이터를 찾고(Post.find()에 
@@ -140,7 +205,7 @@ app.get('/posts', function (req,res) {  // Get신호로 /posts에 접속하는�
     post/index파일을 html로 render합니다.
     (확장자는 안적어도 됩니다. 이미 EJS를 우리의 view file로 설정을 했기 때문이죠)
     */
-    res.render("posts/index", {data:posts}); 
+    res.render("posts/index", {data:posts, user:req.user}); 
     });
 });
 
@@ -217,6 +282,50 @@ app.delete('/posts/:id', function (req,res) {
     res.redirect('/posts');
     });
 });
+
+// functions
+function checkUserRegValidation(req, res, next){
+    var isValid = true;
+    /*
+    아이디가 같은 경우를 찾을때는 단순히 id:req.params.id를 사용하면 됐는데,
+    이는 mongoose에서 string인 id를 id object로 변환해 주기 때문입니다. 
+    DB에서 data들을 살펴보면 사실 id는 단순히 string이 아니라 object임을 알 수 있습니다. 
+    하지만 $ne를 쓰는 경우에는 mongoose가 자동으로 object로 변환을 안해주는지, 제대로 검색을 안해주더라구요. 그래서 생성자를 이용해서 object를 만들었습니다.
+    */
+    async.waterfall(    // 비동기함수들을 동기 함수처럼 사용하게함
+        [function(callback){    // 두개의 함수는 []안에 배열로 들어감, 마지막 함수는 마지막에 실행되거나 중간에 오류가 있을때 실행되는 함수
+            User.findOne({email: req.body.user.email, _id: {$ne: mongoose.Types.ObjectId(req.params.id)}},  // 유저를 생성, 업데이트 하기 전에 DB에 같은 값의 email, nickname을 살펴보기 위한 함수
+                function(err,user){                         // {$ne: ~~~~} 는 !=의 의미를 가진다. 
+                    if(user){
+                        isValid = false;
+                        req.flash("emailError","- This email is already registered.");
+                    }
+                    callback(null, isValid);    // 배열 안의 함수들은 항상 마지막 parameter로 callback을 가짐
+                    // callback 함수를 호출하면 다음번 함수가 호출이 되고, 여기에 다음 함수에 전달할 값을 넣을수 있다.
+                    // 여기서는 isValid 하나만 전달
+                }
+            );
+        }, function(isValid, callback){
+            User.findOne({nickname: req.body.user.nickname, _id: {$ne: mongoose.Types.ObjectId(req.params.id)}},
+                function(err,user){
+                    if(user){
+                        isValid = false;
+                        req.flash("nicknameError","- This nickname is already resistered.");
+                    }
+                    callback(null, isValid);
+                }
+            );
+        }], function(err, isValid){
+            if(err) return res.json({succcess:"false", message:err});
+            if(isValid){
+                return next();
+            }else{
+                req.flash("formData",req.body.user);
+                res.redirect("back");
+            }
+        }
+    );
+}
 
 // start server
 app.listen(3000, function(){    // '3000' 포트를 쓰고 function()을 default로 로딩

@@ -14,17 +14,21 @@
             <!-- views/posts/index.ejs -->
             <div class="index">
                 <a href="/posts/new"><button>New</button></a>
+                <% if(user) {%>
+                <a href="/logout" class="float_right"><button>Logout</button></a>
+                <a href="/users/<%= user._id %>" class="float_right"><button>My Profile (<%= user.nickname %>)</button></a>
+                <% } else { %>
+                <a href="/login" class="float_right"><button>Login</button></a>
+                <a href="/users/new" class="float_right"><button>Sign Up</button></a>
+                <% } %>
                 <ul>
                     <li class="header"> Title <span>Date</span></li>
-                    <!-- mongoose의 find query는 데이터베이스의 데이터를 배열로 가져다 주기 때문에 
-                        자바스크립트의 forEach 함수를 사용해서 데이터를 나열할 수 있습니다.
-                    -->
-                    <% data.forEach(function(e){ %>
-                        <li>
-                            <a href="/posts/<%= e._id %>"><%= e.title %></a>
-                            <span><%= e.createdAt.toLocaleDateString() %></span> 
-                        </li>
-                    <% }) %>
+                <% data.forEach(function(e){ %>
+                    <li>
+                    <a href="/posts/<%= e._id %>"><%= e.title %></a>
+                    <span><%= e.createdAt.toLocaleDateString() %></span>
+                    </li>
+                <% }) %>
                 </ul>
             </div>
 
