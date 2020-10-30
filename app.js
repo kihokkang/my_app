@@ -171,7 +171,7 @@ app.get('/users/:id/edit', isLoggedIn, function(req,res){
                                     user: user,
                                     formData: req.flash('formData')[0], 
                                     emailError: req.flash('emailError')[0],
-                                    nickname: req.flash('nicknameError')[0],
+                                    nicknameError: req.flash('nicknameError')[0],
                                     passwordError: req.flash('passwordError')[0]
                                  }
         );
