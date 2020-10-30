@@ -1,7 +1,7 @@
 // import modules
 var express = require('express');   // npm dependency 추가된 'express' 모듈을 쓰겠다라는 의미
 var path = require('path');         // root 폴더의 path경로를 잡아줌
-var app = express();                // app이라는 변수에 express 라이브러리를 선언
+var app = express();                // app이라는 변수에 express 모듈 선언
 var mongoose = require('mongoose'); // Mongoose 모듈 사용
 var passport = require('passport'); // 계정관리를 할때 쓰이는 package
 var session = require('express-session');   // 로그인 여부판단 및 유저별 데이터 관리
@@ -9,8 +9,7 @@ var flash = require('connect-flash');   // session에 자료를 flash로 저장�
 var async = require('async');   // 비동기식 호출
 var bodyParser = require('body-parser');
 var methodOverride = require('method-override'); // 대부분의 브라우져들이 보안을 문제로 post를 제외한 나머지 신호들을 차단한다는 것입니다. 이를 우회하기 위한 package.
-
-
+var bcrypt = require('bcrypt-nodejs');
 
 // connect database
 mongoose.connect(process.env.MONGO_DB);  // Mongoose를 데이터베이스에 연결
@@ -37,6 +36,23 @@ var userSchema = mongoose.Schema({
     password: {type:String, required:true},
     createdAt: {type:Date, default:Date.now}
 });
+userSchema.pre("save", function(next){  // User 모델이 "save"되기전(pre)에 모델에 대해서 할 일을 스카마에 저장하는 단계
+    var user = this;
+    if(!user.isModified("password")){
+        return next();
+    }else{
+        user.password = bcrypt.hashSync(user.password);
+        return next();
+    }
+});
+userSchema.methods.authenticate = function (password) {
+    var user = this;
+    return bcrypt.compareSync(password,user.password);  // bcrypt.compareSync함수를 사용해서 입력된 password와 db의 hash(user.password)를 비교합니다.
+};
+userSchema.methods.hash = function (password) {
+    return bcrypt.hashSync(password);
+};
+// Sync가 들어가 있으므로 동기식 함수라는 것을 알 수 있습니다. 이 함수는 hash가 일치하면 true, 일치하지 않으면 false를 return합니다.
 var User = mongoose.model('user', userSchema);
 
 // view setiing
@@ -48,11 +64,11 @@ app.use(express.static(path.join(__dirname, 'public')));    // public이라는 �
 app.use(bodyParser.json()); // 모든 서버에 도착하는 신호들의 body를 JSON으로 분석
 app.use(bodyParser.urlencoded({extended:true})); // 웹 사이트가 JSON으로 데이터를 전송 할 경우 받는 body parser.
 app.use(methodOverride("_method"));
-app.use(flash());
 
 app.use(session({secret:'MySecret'}));  // 로그인 유지:secret은 session을 암호화 할떄 쓰이는 hash key값
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(flash());
 
 passport.serializeUser(function(user, done){    // session 생성 시에 어떠한 정보를 저장할지를 설정
     done(null, user.id);    // user.id를 session에 저장  (이때 id는 db의 id임.)
@@ -78,7 +94,7 @@ passport.use('local-login', // strategy에 이름 지어주기
                     req.flash("email", req.body.email);
                     return done(null, false, req.flash('loginError', 'No user found.'));
                 }
-                if(user.paswword != password){  // 비밀번호 매치되는지 확인
+                if(!user.authenticate(password)){  // 비밀번호 매치되는지 확인
                     req.flash("email", req.body.email);
                     return done(null, false, req.flash('loginError', 'Password does not match.'));
                 }
@@ -89,18 +105,18 @@ passport.use('local-login', // strategy에 이름 지어주기
 );
 
 // set home routes
-app.get('/', function(res,req){ // 자등으로 게시판으로 이동
+app.get('/', function(req,res){ // 자등으로 게시판으로 이동
     res.redirect('/posts');
 });
 
-app.get('/login', function(res,req){    // login form이 있는 view를 불러오는 route
-    res.render('login/login', {email:req.flash("email")[0], loginError:req.flash('loginError')})
+app.get('/login', function(req,res){    // login form이 있는 view를 불러오는 route
+    res.render('login/login',{email:req.flash("email")[0], loginError:req.flash('loginError')});
 });
 
 app.post('/login',  // login form에서 받은 정보로 로그인을 실행하는 부분
     function (req,res,next){
         req.flash("email"); // 혹시라도 남아 있을지 모르는 flash 이메일을 지움
-        if(req.body.email.length === 0 || req.body.password.length ===0){   // form에 정보들이 있는지를 확인해서 없으면
+        if(req.body.email.length === 0 || req.body.password.length === 0){   // form에 정보들이 있는지를 확인해서 없으면
             req.flash("email", req.body.email);                             // 에러메세지와 함께 다시 login 페이지로 redirect함
             req.flash("loginError","Please enter both email and password.");
             res.redirect('/login');
@@ -140,7 +156,7 @@ app.post('/users', checkUserRegValidation, function(req,res,next){  // user 생�
 });
 
 // show
-app.get('/users/:id', function(req,res){    // user의 profile을 보여주기 위한 route.
+app.get('/users/:id', isLoggedIn, function(req,res){    // user의 profile을 보여주기 위한 route.
     User.findById(req.params.id, function(err,user){
         if(err) return res.json({success:false, message:err});
         res.render("users/show", {user: user});
@@ -148,7 +164,7 @@ app.get('/users/:id', function(req,res){    // user의 profile을 보여주기 �
 });
 
 // edit
-app.get('/users/:id/edit', function(req,res){   
+app.get('/users/:id/edit', isLoggedIn, function(req,res){   
     User.findById(req.params.id, function(err,user){
         if(err) return res.json({success:false, message:err});
         res.render('users/edit', {
@@ -163,26 +179,27 @@ app.get('/users/:id/edit', function(req,res){
 });
 
 // update
-app.put('/users/:id', checkUserRegValidation, function(req,res){    // checkUserRegValidation을 사용해서 업데이트 할 정보가 유효한지를 판단
-    User.findById(req.params.id, req.body.user, function(err,user){
-        if(err) return res.json({success:"false", message:err});
-        if(req.body.user.password == user.password){
-            if(req.body.user.newPassword){
-                req.body.user.password=req.body.user.newPassword;
-            }else{
-                delete req.body.user.password;
-            }
-            User.findByIdAndUpdate(req.params.id, req.body.user, function (err,user){
-                if(err) return res.json({success:"false", message:err});
-                res.redirect('/users/'+req.params.id);
-            });
-        }else{
-            req.flash("formData", req.body.user);
-            req.flash("passwordError", "- Invalid password");
-            res.redirect('/users/'+req.params.id+"/edit");
+app.put('/users/:id', isLoggedIn, checkUserRegValidation, function(req,res){
+    if(req.user._id != req.params.id) return res.json({success:false, message:"Unauthrized Attempt"});
+    User.findById(req.params.id, req.body.user, function (err,user) {
+      if(err) return res.json({success:"false", message:err});
+      if(user.authenticate(req.body.user.password)){
+        if(req.body.user.newPassword){
+          req.body.user.password = user.hash(req.body.user.newPassword);
+        } else {
+          delete req.body.user.password;
         }
+        User.findByIdAndUpdate(req.params.id, req.body.user, function (err,user) {
+          if(err) return res.json({success:"false", message:err});
+          res.redirect('/users/'+req.params.id);
+        });
+      } else {
+        req.flash("formData", req.body.user);
+        req.flash("passwordError", "- Invalid password");
+        res.redirect('/users/'+req.params.id+"/edit");
+      }
     });
-});
+  });
 
 // set routes
 /*
@@ -284,6 +301,13 @@ app.delete('/posts/:id', function (req,res) {
 });
 
 // functions
+function isLoggedIn(req, res, next){    // 현재 로그인이 되어있는지 아닌지 여부 판단하는 함수
+    if(req.isAuthenticated()){
+        return next();
+    }
+    res.redirect('/');
+}
+
 function checkUserRegValidation(req, res, next){
     var isValid = true;
     /*
